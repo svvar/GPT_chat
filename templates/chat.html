@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat GPT v. -0.3</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f2f2f2;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+        }
+
+        #chat {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background-color: #fff;
+        }
+
+        #bottom-bar {
+            display: flex;
+            flex-wrap: wrap;
+            padding: 10px;
+            background-color: #ddd;
+        }
+
+        #message-form {
+            display: flex;
+            padding: 10px;
+            background-color: #ddd;
+            flex-grow: 1;
+        }
+
+        #message-input {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+        }
+
+        #send-button{
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-left: 10px;
+            cursor: pointer;
+        }
+
+        #logout {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 10px;
+            cursor: pointer;
+            background-color: #ca1f33;
+            color: #ececec;
+        }
+
+        #clean-memory {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 10px;
+            cursor: pointer;
+            background-color: #f0ad4e;
+            color: #000000;
+        }
+
+        .message {
+            display: flex;
+            margin-bottom: 10px;
+            padding: 0 10px;
+        }
+
+        .message.self {
+            justify-content: flex-end;
+        }
+
+        .message.peer {
+            justify-content: flex-start;
+        }
+
+        .message.system {
+            justify-content: center;
+        }
+
+        .message-content {
+            max-width: 60%;
+            padding: 10px;
+            border-radius: 15px;
+            word-wrap: break-word;
+            font-size: 16px;
+        }
+
+        .self-bubble {
+            background-color: #dcf8c6;
+            color: #000;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .peer-bubble {
+            background-color: #fff;
+            color: #000;
+            border: 1px solid #ccc;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .system-message {
+            background-color: transparent;
+            color: gray;
+            font-style: italic;
+        }
+
+        #loading-spinner {
+            display: none;
+            position: sticky;
+            bottom: 0;
+            margin-top: 50px;
+            left: 50%;
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(0, 0, 0, 0.1);
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            transform: translate(-50%, -50%);
+        }
+
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+    </style>
+</head>
+<body>
+<div id="chat">
+    <div id="loading-spinner"></div>
+</div>
+<div id="bottom-bar">
+    <form id="message-form">
+        <input type="text" id="message-input" autocomplete="off" placeholder="Введіть повідомлення..." />
+        <button type="submit" id="send-button">Відправити</button>
+    </form>
+    <button id="clean-memory">Очистити пам'ять</button>
+    <button id="logout">Вийти</button>
+</div>
+
+
+<script>
+    const chat = document.getElementById('chat');
+    const form = document.getElementById('message-form');
+    const input = document.getElementById('message-input');
+    const spinner = document.getElementById('loading-spinner');
+    const logoutButton = document.getElementById('logout');
+    const cleanMemoryButton = document.getElementById('clean-memory');
+
+
+    function appendMessage(message, type) {
+        const msgDiv = document.createElement('div');
+        msgDiv.classList.add('message');
+
+        const contentDiv = document.createElement('div');
+        contentDiv.classList.add('message-content');
+        contentDiv.textContent = message;
+
+        if (type === 'self') {
+            msgDiv.classList.add('self');
+            contentDiv.classList.add('self-bubble');
+        } else if (type === 'peer') {
+            msgDiv.classList.add('peer');
+            contentDiv.classList.add('peer-bubble');
+        } else {
+            msgDiv.classList.add('system');
+            contentDiv.classList.add('system-message');
+        }
+
+        msgDiv.appendChild(contentDiv);
+        if (spinner){
+            chat.insertBefore(msgDiv, spinner);
+        }
+        else {
+            chat.appendChild(msgDiv);
+        }
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const message = input.value.trim();
+        if (message === '') return;
+
+        appendMessage(message, 'self');
+        input.value = '';
+
+        spinner.style.display = 'block';
+        chat.scrollTop = chat.scrollHeight;
+
+        try {
+            const response = await fetch('/ask-gpt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message })
+            });
+
+            console.log(response);
+            spinner.style.display = 'none';
+
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            if (data && data.response) {
+                appendMessage(data.response, 'peer');
+            }
+        } catch (error) {
+            appendMessage(error.detail, 'system');
+            console.error('Error:', error.detail);
+        }
+    });
+
+    logoutButton.addEventListener('click', async () => {
+        const response = await fetch('/logout', { method: 'POST' });
+
+        if (response.ok) {
+            window.location.href = '/login';
+        }
+    });
+
+    cleanMemoryButton.addEventListener('click', async () => {
+        const response = await fetch('/clear-memories', { method: 'POST' });
+
+        if (response.ok) {
+            appendMessage('Пам\'ять очищено', 'system');
+        }
+    });
+
+    // window.addEventListener("unload", () => {
+    //     navigator.sendBeacon("/clear-memories");
+    // });
+
+</script>
+</body>
+</html>
